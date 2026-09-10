@@ -1,15 +1,12 @@
-import os
-import sys
-
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "app"))
 
-from database import Base, get_db  # noqa: E402
-from main import app  # noqa: E402
+
+from app.database import Base, get_db
+from app.main import app
 
 TEST_DB_URL = "sqlite:///./test_vulntracker.db"
 engine = create_engine(TEST_DB_URL, connect_args={"check_same_thread": False})
