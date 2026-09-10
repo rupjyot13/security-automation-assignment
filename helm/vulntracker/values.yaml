@@ -1,0 +1,43 @@
+replicaCount: 2
+
+image:
+  repository: vulntracker-app
+  tag: task4
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 8000
+
+ingress:
+  enabled: true
+  className: alb
+  host: vulntracker.example.com
+  path: /
+  pathType: Prefix
+  internal: true
+  allowedCidrs:
+    - 10.0.0.0/8
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+securityContext:
+  runAsNonRoot: true
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+
+secretStore:
+  name: aws-secretsmanager
+  kind: ClusterSecretStore
+
+secret:
+  name: vulntracker-secrets
+  remoteKey: vulntracker/production
