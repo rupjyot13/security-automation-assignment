@@ -1,321 +1,138 @@
 # Executive Summary
 
-## 1. Overview
+## 1. Security Posture — Before and After
 
-The VulnTracker application and its deployment artifacts were reviewed from an application security, dependency, container, and Kubernetes security perspective.
+Before this assessment, the VulnTracker application had several high-impact weaknesses that could allow unauthorized access to data, exposure of credentials, manipulation of database queries, or acceptance of unsafe authentication tokens. These weaknesses created risks to the confidentiality and integrity of vulnerability information.
 
-The assessment covered:
+The assessment addressed the highest-priority application weaknesses and strengthened the application's deployment security.
 
-* Application source code through SAST and manual security review
-* Python dependencies using software composition analysis
-* Node.js dependencies using dependency analysis
-* Container image vulnerabilities using Docker Scout
-* Kubernetes and Helm security configuration using Checkov
-* Security controls implemented as part of the assignment tasks
+The following improvements were completed:
 
-The objective was to identify significant security weaknesses, remediate selected application vulnerabilities, and document residual risks that require further remediation.
+* SQL Injection was remediated by using parameterized database queries.
+* Access controls were strengthened so users can access only their own scan data, including search results.
+* Password values were removed from application logs.
+* Unsafe unsigned JWT tokens using the `none` algorithm are no longer accepted.
+* Hardcoded JWT and database credentials were removed from application configuration.
+* Shared report links introduced during Task 1 were protected using secure random tokens, token hashing, expiration, optional password protection, and ownership checks.
+* Container and Kubernetes deployment security was strengthened through non-root execution, read-only filesystem settings, restricted privileges, network controls, resource limits, health checks, and external secret management.
 
----
-
-## 2. Security Improvements Completed
-
-The highest-impact application vulnerabilities identified in the starter application were remediated.
-
-### SQL Injection
-
-The scan-search functionality was changed from unsafe SQL string interpolation to parameterized SQLAlchemy queries.
-
-This prevents user-controlled search input from being interpreted as SQL syntax.
-
-### Broken Object-Level Authorization / IDOR
-
-Authorization checks were added so authenticated users can access only their own scan data.
-
-This includes:
-
-* Direct scan retrieval
-* Scan-search results
-
-Search queries are restricted using the authenticated user's `owner_id`.
-
-### Passwords in Application Logs
-
-Password values were removed from login-related application logging.
-
-This prevents credentials from being unnecessarily exposed through application and centralized logging systems.
-
-### JWT `none` Algorithm
-
-JWT validation was changed so that only the configured `HS256` signing algorithm is accepted.
-
-Unsigned JWTs using the `none` algorithm are no longer accepted.
-
-### Hardcoded Credentials
-
-Hardcoded JWT and database credentials in the starter configuration were removed from application source configuration.
-
-The application now uses environment-based configuration and the configured external secret-management flow for production deployment.
+Overall, the application is in a **significantly stronger security position than the starting point**, particularly for the high-impact application vulnerabilities selected for remediation. However, it should not yet be considered production-ready without addressing the remaining risks described below.
 
 ---
 
-## 3. Task 1 Security Hardening
+## 2. Top 3 Residual Risks
 
-The shared report-link functionality introduced during Task 1 was implemented with additional security controls.
+### 1. Dependency and Container Vulnerabilities
 
-The implementation includes:
+The application still has known vulnerabilities in third-party Python and Node.js packages, as well as operating-system and library packages in the container image.
 
-* Cryptographically secure share tokens
-* SHA-256 hashing of share tokens before database storage
-* 24-hour link expiration
-* Optional password protection
-* Password hashing
-* Ownership checks when creating share links
-* Generic handling of invalid or expired links
+These were not fully remediated because dependency and base-image upgrades can introduce compatibility issues and require regression testing. The container findings also need to be reviewed based on actual severity and exploitability rather than treating every scanner result as an equally serious application vulnerability.
 
-These controls reduce the risk associated with sharing vulnerability reports through externally accessible links.
+**Business risk:** Vulnerable components could increase the likelihood of exploitation if a relevant vulnerability is reachable and exploitable in the production environment.
 
-The shared-link functionality is considered **security hardening introduced during Task 1**, rather than a pre-existing critical/high vulnerability in the starter application.
+**Recommended action:** Prioritize critical and high-risk findings, update affected packages and the container base image, perform regression testing, rebuild, and rescan before production release.
 
 ---
 
-## 4. Infrastructure Security Improvements
+### 2. Application Error and Access-Control Hardening
 
-The Kubernetes and Helm deployment was hardened using several security controls.
+Two application configuration issues remain:
 
-Implemented controls include:
+* Detailed internal error information can currently be returned to clients when unexpected application errors occur.
+* Cross-origin access is broader than a production environment should normally allow.
 
-* Dedicated application namespace
-* Non-root container execution
-* Explicit UID/GID
-* Read-only root filesystem
-* Disabled privilege escalation
-* Dropped Linux capabilities
-* RuntimeDefault seccomp profile
-* Disabled automatic service-account-token mounting
-* CPU and memory requests/limits
-* Image digest pinning
-* Restricted ingress CIDR
-* Internal ALB configuration
-* NetworkPolicy
-* External secret management
-* Readiness and liveness probes
+These were not part of the selected remediation work and therefore were documented rather than changed late in the assignment.
 
-These controls reduce the application's runtime and infrastructure attack surface.
+**Business risk:** Detailed error information can reveal internal implementation details, while overly broad cross-origin access can increase the impact of a compromised or untrusted frontend.
+
+**Recommended action:** Return generic error messages to users, keep detailed diagnostics in protected server-side logs, and restrict cross-origin access to explicitly trusted applications.
 
 ---
 
-## 5. Security Scan Results
+### 3. Secret Handling and Notification-Service Credential
 
-### Kubernetes / Helm
+The Kubernetes deployment obtains secrets through external secret management, but the resulting Kubernetes Secret values are currently supplied to the application as environment variables. In addition, the notification service contains a hardcoded credential-like value that appears unused by the current notification endpoint.
 
-The Checkov scan completed with:
+These items were not fully remediated because the current external secret-management flow provides protection against storing secrets directly in source code or the container image, while the notification-service value was outside the main application remediation scope and appears unused.
 
-* **93 passed checks**
-* **1 failed check**
+**Business risk:** Incorrectly managed credentials can become a source of unauthorized access if they are later used, exposed, or not rotated appropriately.
 
-The remaining finding was:
-
-`CKV_K8S_35` — Kubernetes secrets supplied through environment variables.
-
-The current implementation obtains secrets through the external secret-management flow rather than storing them in source code or the container image.
-
-The finding is therefore accepted for the current assignment scope, with future remediation documented separately.
-
-### Container Image
-
-Docker Scout identified **193 failed vulnerability results** in the container image, consisting of:
-
-* 6 Critical
-* 69 High
-* 60 Medium
-* 53 Low
-* 5 Unspecified
-
-These results include vulnerabilities in operating-system and Python packages.
-
-The raw scanner count should not be interpreted as 193 equally exploitable application vulnerabilities. Some findings have distribution-specific classifications such as unimportant, disputed, or negligible impact.
-
-The container has nevertheless been hardened and the remaining relevant CVEs require controlled base-image and package updates.
+**Recommended action:** Review the notification-service value and remove or rotate it if it represents a real credential. Where practical, use a more restrictive secret-delivery mechanism for application workloads.
 
 ---
 
-## 6. Remaining Security Risks
+## 3. Recommended Next Steps for Production
 
-Several findings remain open and require follow-up remediation.
+If VulnTracker were moving toward production, the recommended order of work would be:
 
-### Dependency Vulnerabilities
+### Priority 1 — Reduce exploitable exposure
 
-Python dependency scanning identified vulnerabilities involving packages including:
+* Review and address critical and high-risk dependency findings.
+* Update the container base image and affected packages.
+* Rebuild and rescan the container image.
+* Perform regression testing after dependency changes.
 
-* `python-jose`
-* `cryptography`
-* `fastapi`
-* Starlette-related dependencies
-* `python-multipart`
-* Other transitive dependencies
+### Priority 2 — Complete application hardening
 
-Node.js dependency analysis also identified vulnerabilities involving packages including:
+* Replace detailed error responses with generic client-facing errors.
+* Restrict cross-origin access to trusted origins.
+* Review the notification-service credential-like value and remove or securely manage it.
+* Confirm that all credentials are rotated and externally managed.
 
-* `axios`
-* `express`
-* `uuid`
-* Related transitive dependencies
+### Priority 3 — Strengthen deployment security
 
-These dependencies should be upgraded in a controlled manner with compatibility testing, regression testing, and subsequent security scans.
+* Review the remaining Kubernetes secret-handling finding.
+* Continue using external secret management rather than storing credentials in source code or container images.
+* Review workload permissions and network access before production deployment.
 
-### Container Image Vulnerabilities
+### Priority 4 — Make security checks continuous
 
-The container image still contains reported OS and library vulnerabilities.
+Security checks should become part of the normal software delivery process rather than being performed only during an assessment.
 
-Future remediation should include:
+A production pipeline should check:
 
-1. Updating the base image and affected packages.
-2. Rebuilding the image.
-3. Running application regression tests.
-4. Running Docker Scout again.
-5. Reviewing remaining CVEs based on severity and exploitability.
+1. Application source code
+2. Third-party dependencies
+3. Secrets
+4. Infrastructure configuration
+5. Container images
 
-### Kubernetes Secret Environment Variables
-
-Checkov identified the use of Kubernetes Secret values as environment variables.
-
-The current configuration is accepted with compensating controls, but a future implementation could mount sensitive values as files where application compatibility permits.
-
-### Global Exception Information Disclosure
-
-The global exception handler currently exposes detailed internal information in 500 responses, including exception and traceback information.
-
-Future remediation should return a generic error response to clients while retaining detailed diagnostic information in protected server-side logs.
-
-### Overly Permissive CORS
-
-The current CORS configuration is more permissive than an explicit environment-specific origin allowlist.
-
-Future remediation should restrict allowed origins to trusted frontend applications.
-
-### Notification Service Credential-Like Configuration
-
-The Node.js notification service contains a hardcoded credential-like `SERVICE_KEY`.
-
-The value appears unused by the current `/notify` endpoint and was not modified because notification-service changes were outside the current assignment scope.
-
-If the value is intended to be a real credential, it should be removed from source code, rotated if necessary, and managed through an appropriate secret-management mechanism.
+Security findings should be reviewed before deployment, with appropriate release gates for critical issues.
 
 ---
 
-## 7. Testing and Validation
+## 4. Validation
 
-
-### Targeted Search Authorization Regression Test
-
-A targeted regression test was added for the `/scans/search` endpoint to validate the BOLA/IDOR remediation. The test creates matching SQL findings for two different authenticated users and verifies that a user's search results contain only that user's own scan, even when another user's scan matches the same search query.
-
-This provides automated validation that the search endpoint enforces the authenticated user's ownership boundary.
-
-
-### Application tests were executed after the security remediation changes.
-
-The final test execution completed successfully:
+The application test suite was executed after the remediation changes:
 
 ```text
 10 passed
 ```
 
-Python compilation checks were also performed successfully for the modified application modules.
+A targeted regression test was also added for the scan-search functionality. It verifies that two users with matching findings cannot see each other's results through the search endpoint.
 
-The testing confirms that the existing application test suite passes after the remediation changes.
+Python compilation checks completed successfully.
 
-The shared-report-link functionality received security hardening, but comprehensive regression testing of every shared-link scenario was not included in the final test suite.
+The container image was successfully built and run for a smoke test, confirming that the application starts correctly in the container.
 
----
-
-## 8. Overall Security Assessment
-
-The assignment significantly improves the security posture of the VulnTracker application.
-
-The major application-level vulnerabilities selected for remediation were addressed, including:
-
-* SQL Injection
-* Broken Object-Level Authorization / IDOR
-* Password exposure through logs
-* JWT `none` algorithm acceptance
-* Hardcoded JWT secret
-* Hardcoded database password
-
-The deployment was also strengthened through container and Kubernetes security controls such as non-root execution, restricted Linux capabilities, read-only filesystem configuration, seccomp, NetworkPolicy, resource limits, image digest pinning, and external secret management.
-
-However, the application should **not be considered completely vulnerability-free**.
-
-The remaining dependency, container-image, configuration, and information-disclosure findings require continued remediation and periodic rescanning.
-
----
-
-## 9. Recommended Next Steps
-
-The recommended security follow-up priorities are:
-
-### Priority 1 — Dependency and Container Updates
-
-* Review critical and high-severity dependency findings.
-* Upgrade affected Python and Node.js packages.
-* Update the container base image and affected OS packages.
-* Rebuild and rescan the container image.
-* Perform regression testing after upgrades.
-
-### Priority 2 — Application Security Hardening
-
-* Replace detailed 500 responses with generic error responses.
-* Restrict CORS to explicit trusted origins.
-* Review and remove or securely manage the notification-service key.
-
-### Priority 3 — Kubernetes Secret Handling
-
-Evaluate migrating application secrets from environment variables to file-based secret mounts where practical and compatible with the application.
-
-### Priority 4 — Continuous Security Scanning
-
-Security scanning should become part of the CI/CD lifecycle.
-
-A recommended pipeline sequence is:
+The notification service was also validated:
 
 ```text
-Code Commit
-    |
-    v
-SAST
-    |
-    v
-Dependency / SCA Scan
-    |
-    v
-Secret Scan
-    |
-    v
-IaC Security Scan
-    |
-    v
-Container Build
-    |
-    v
-Container Image Scan
-    |
-    v
-Security Quality Gates
-    |
-    v
-Deployment
+8 tests
+8 passed
+0 failed
 ```
 
-This allows security issues to be identified before deployment rather than only during periodic reviews.
+The shared-report functionality received security hardening, although comprehensive regression testing of every shared-link scenario was not included in the final test suite.
 
 ---
 
-## 10. Conclusion
+## 5. Overall Assessment
 
-The VulnTracker security assessment identified multiple application and infrastructure security risks.
+The assessment materially improved the security posture of VulnTracker.
 
-The selected high-impact application vulnerabilities were successfully remediated, while additional security controls were introduced for the shared report functionality and Kubernetes deployment.
+The most important application weaknesses identified for remediation were addressed, and additional controls were introduced around report sharing and deployment security.
 
-Outstanding dependency, container, and configuration findings have been documented rather than incorrectly marked as resolved.
+The remaining risks are primarily related to third-party dependencies, container packages, application configuration, and secret handling. These should be addressed and continuously monitored before the service is considered fully production-ready.
 
-The resulting implementation provides a stronger security baseline while clearly identifying the remaining risks and the recommended path for continued remediation.
+The current implementation provides a stronger security baseline while clearly identifying the remaining work required to reduce production risk.
