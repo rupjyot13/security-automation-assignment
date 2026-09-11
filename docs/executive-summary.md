@@ -205,7 +205,15 @@ If the value is intended to be a real credential, it should be removed from sour
 
 ## 7. Testing and Validation
 
-Application tests were executed after the security remediation changes.
+
+### Targeted Search Authorization Regression Test
+
+A targeted regression test was added for the `/scans/search` endpoint to validate the BOLA/IDOR remediation. The test creates matching SQL findings for two different authenticated users and verifies that a user's search results contain only that user's own scan, even when another user's scan matches the same search query.
+
+This provides automated validation that the search endpoint enforces the authenticated user's ownership boundary.
+
+
+### Application tests were executed after the security remediation changes.
 
 The final test execution completed successfully:
 
