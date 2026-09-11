@@ -111,15 +111,68 @@ def test_list_scans():
 
 
 def test_search_scans():
-    # TODO: add assertions for search results
-    token = register_and_login()
-    client.post("/scans", json={
-        "title": "SQL Injection via login",
-        "severity": "critical",
-        "affected_component": "POST /auth/login",
-    }, headers=auth_headers(token))
-    resp = client.get("/scans/search?q=SQL", headers=auth_headers(token))
+    # User Alice creates a SQL-related scan.
+    alice_token = register_and_login(
+        username="alice",
+        email="alice@example.com",
+        password="password123",
+    )
+
+    alice_scan = client.post(
+        "/scans",
+        json={
+            "title": "SQL Injection via login",
+            "description": "SQL injection vulnerability in authentication flow",
+            "severity": "critical",
+            "affected_component": "POST /auth/login",
+        },
+        headers=auth_headers(alice_token),
+    )
+
+    assert alice_scan.status_code == 201
+
+    # User Bob creates a different SQL-related scan.
+    bob_token = register_and_login(
+        username="bob",
+        email="bob@example.com",
+        password="password123",
+    )
+
+    bob_scan = client.post(
+        "/scans",
+        json={
+            "title": "SQL Injection in reporting",
+            "description": "SQL injection vulnerability in reporting flow",
+            "severity": "high",
+            "affected_component": "GET /reports",
+        },
+        headers=auth_headers(bob_token),
+    )
+
+    assert bob_scan.status_code == 201
+
+    # Alice searches for SQL-related findings.
+    resp = client.get(
+        "/scans/search?q=SQL",
+        headers=auth_headers(alice_token),
+    )
+
     assert resp.status_code == 200
+
+    data = resp.json()
+
+    # The API returns a count and a results list.
+    assert data["count"] == 1
+
+    results = data["results"]
+
+    # Alice should see her own matching scan.
+    assert len(results) == 1
+    assert results[0]["title"] == "SQL Injection via login"
+
+    # Alice must not see Bob's matching scan.
+    assert results[0]["owner_id"] != bob_scan.json()["owner_id"]
+
 
 
 def test_update_scan_status():
